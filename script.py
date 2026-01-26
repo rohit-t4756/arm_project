@@ -27,10 +27,10 @@ def sendCommands(recogniser_result):
     
     # 1. Accessing data from the nested structure
     gestures = recogniser_result.gestures[0]  # List of candidates for hand 0
-    top_gesture = gestures[0]                 # Highest scoring candidate
+    top_gesture = gestures[0]
     gesture_name = top_gesture.category_name
     
-    # --- LOGIC FOR START / STOP (Victory Symbol) ---
+    # Logic for start/ stop (victory symbol)
     if gesture_name == 'Victory':
         if last_toggle_gesture != 'Victory':
             startFlag = not startFlag
@@ -84,15 +84,6 @@ while True:
     recogniser_result = recogniser.recognize(mediapipe_img)
 
     if recogniser_result.gestures:
-        # # Extract the top gesture category name and score
-        # top_gesture = recogniser_result.gestures[0][0]
-        # gesture_name = top_gesture.category_name
-        # score = top_gesture.score
-        
-        # # Display the result on the original frame
-        # display_text = f"{gesture_name} ({score})"
-        # reader.putText(frame, display_text, (15, 50), reader.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 1, reader.LINE_AA)
-
         # The switchcase function
         sendCommands(recogniser_result)
     else:
