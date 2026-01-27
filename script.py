@@ -1,6 +1,7 @@
 import cv2 as reader
 import mediapipe as mp
 from math import sqrt
+import pyautogui as typer
 
 # Initialising the camera object
 camera = reader.VideoCapture(0)
@@ -20,6 +21,7 @@ recogniser = mp.tasks.vision.GestureRecognizer.create_from_options(options)
 # Global State Variables
 startFlag = False
 isPlaying = False
+pinch_start_coords = ()
 last_toggle_gesture = None  # To prevent flickering (debounce)
 
 def sendCommands(recogniser_result):
@@ -35,6 +37,7 @@ def sendCommands(recogniser_result):
         if last_toggle_gesture != 'Victory':
             startFlag = not startFlag
             print(f"System Status: {'STARTED' if startFlag else 'STOPPED'}")
+            typer.press("a" if startFlag else "q")
             last_toggle_gesture = 'Victory'
     
     # Logic for playing and pausing (close-fist)
@@ -43,30 +46,57 @@ def sendCommands(recogniser_result):
             if startFlag:
                 isPlaying = not isPlaying
                 print(f"Media Status: {'PLAYING' if isPlaying else 'PAUSED'}")
+                typer.press("capslock")
             last_toggle_gesture = 'Closed_Fist'
             
     # Logic for volume comtrol(pinch)
     elif startFlag:
         last_toggle_gesture = None
-        
         landmarks = recogniser_result.hand_landmarks[0]
         
         thumb_tip = landmarks[4]
         index_tip = landmarks[8]
+        global pinch_start_coords
         
-        distance = sqrt(
-            (thumb_tip.x - index_tip.x)**2 + 
-            (thumb_tip.y - index_tip.y)**2
-        )
+        # Calculate distance to detect if a pinch is happening
+        finger_gap = sqrt((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)
+        # The center point of the pinch
+        average = ((thumb_tip.x + index_tip.x) / 2, (thumb_tip.y + index_tip.y) / 2)
         
-        # Simple threshold for a 'pinch'
-        if distance < 0.05:
-            # print("Pinch detected! Volume adjusting...")
-            pass
-
+        if finger_gap < 0.05:
+            if pinch_start_coords is None:
+                print("Pinch detected! Volume adjusting...")
+                pinch_start_coords = average
+            else:
+                # IMPORTANT: Use Y-axis difference for direction (Up vs Down)
+                # In CV, Y decreases as you move your hand UP the screen
+                delta_y = pinch_start_coords[1] - average[1]
+                
+                # Sensitivity threshold: 0.1 units of screen height per keypress
+                sensitivity = 0.1
+                volume_steps = int(delta_y / sensitivity)
+                
+                if volume_steps > 0:
+                    for _ in range(volume_steps):
+                        typer.press("up")
+                        print("pressed up")
+                    pinch_start_coords = average # Update anchor to current position
+                elif volume_steps < 0:
+                    for _ in range(abs(volume_steps)):
+                        typer.press("down")
+                        print("pressed down")
+                    pinch_start_coords = average # Update anchor to current position
+            
+            # Draw visual feedback (Converting normalized to pixel coordinates)
+            h, w, _ = frame.shape
+            pixel_center = (int(average[0] * w), int(average[1] * h))
+            reader.circle(frame, pixel_center, 10, (1, 92, 255), -1)
+        else:
+            pinch_start_coords = None
     else:
         # Reset debounce when hand is visible but doing nothing special
         last_toggle_gesture = None
+        pinch_start_coords = None
 
 # -----------------------------------------------------------------------------------------------------------------------------------------------
 
