@@ -10,7 +10,7 @@ camera.set(4, 480)
 
 # Initialising stuff for Mediapipe
 BaseOptions = mp.tasks.BaseOptions
-model_path = r"C:\Coding\Projects\arm_project\gesture_recognizer.task"
+model_path = r"/home/rlybored/Coding/arm_project/gesture_recognizer.task"
 options = mp.tasks.vision.GestureRecognizerOptions(base_options = BaseOptions(model_asset_path = model_path),
                                                    num_hands = 1,
                                                    running_mode = mp.tasks.vision.RunningMode.IMAGE)
