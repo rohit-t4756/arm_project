@@ -4,20 +4,22 @@ import cv2
 import time
 from OneEuroFilter import OneEuroFilter
 
-# Connecting to our other files:
+# Connecting to other files:
 from input_handler import async_typer
 from utilities import GestureCooldown
 
 class GestureProcessor:
     def __init__(self):
-        # State Initialization (Previously Global Variables)
+        # State Initialization
         self.pinch_start_coords = None
-        self.gap_threshold = 0.05
-        self.volume_sensitivity = 0.08
+        self.base_gap_threshold = 0.05
+        self.base_volume_sensitivity = 0.08
         self.isPlaying = False
         self.isSystemOn = False
+        self.isMuted = False
         self.last_system_state = None 
         self.last_play_state = None
+        self.last_vol_state = None
         self.user_hand_preference = "left"
         
         # Cooldowns
@@ -48,6 +50,18 @@ class GestureProcessor:
             self.last_system_state = None
             self.last_play_state = None
             return
+        
+        # 0.75. Distance Scaling
+        hand_landmarks = result.hand_landmarks[0]
+        wrist = hand_landmarks[0]
+        middle_mcp = hand_landmarks[9]
+        hand_size = sqrt((middle_mcp.x - wrist.x)**2 + (middle_mcp.y - wrist.y)**2)
+        
+        scale_factor = 0.15 / max(hand_size, 0.1)
+        scale_factor = max(0.5, min(scale_factor, 3.0))         # Limiting the scale factor between 0.5 times and 3 times.
+
+        gap_threshold = self.base_gap_threshold / scale_factor
+        volume_sensitivity = self.base_volume_sensitivity / scale_factor
 
         # 1. Accessing the data
         gestures = result.gestures[0]
@@ -67,9 +81,24 @@ class GestureProcessor:
             
             self.last_play_state = None 
             self.pinch_start_coords = None
+        
+        # --- Rest gesture ---
+        elif(gesture_name == 'Open_Palm'):
+            pass
+        
+        # --- Mute/Unmute Logic ---
+        elif (gesture_name == 'Closed_Fist') and self.isSystemOn:
+            target_vol_state = "Unmuted" if not self.isMuted else "Muted"
+            if self.last_vol_state != target_vol_state and self.toggle_cooldown.ready():
+                self.isMuted = not self.isMuted
+                print("Volume status: " + ("Unmuted" if self.isMuted else "Muted"))
+                async_typer("m")
+                self.last_vol_state = target_vol_state
+            self.last_system_state = None
+            self.pinch_start_coords = None
 
         # --- Play/Pause Logic ---
-        elif (gesture_name == 'Closed_Fist' and self.isSystemOn):
+        elif (gesture_name == 'Pointing_Up' and self.isSystemOn):
             target_play = "Playing" if not self.isPlaying else "Paused"
             if self.last_play_state != target_play and self.toggle_cooldown.ready():
                 self.isPlaying = not self.isPlaying
@@ -81,7 +110,6 @@ class GestureProcessor:
 
         # --- Volume Control Logic ---
         elif self.isSystemOn:
-            hand_landmarks = result.hand_landmarks[0]
             thumb_tip = hand_landmarks[4]
             index_tip = hand_landmarks[8]
 
@@ -89,18 +117,18 @@ class GestureProcessor:
             filtered_distance = self.filter(unfiltered_distance, timestamp= int(time.time() * 1000000))
             current_pinch_position = ((thumb_tip.x + index_tip.x) / 2, (thumb_tip.y + index_tip.y) / 2)
 
-            if filtered_distance <= self.gap_threshold:
+            if filtered_distance <= gap_threshold:
                 if self.pinch_start_coords == None:
                     self.pinch_start_coords = current_pinch_position
                 else:
                     y_movement = self.pinch_start_coords[1] - current_pinch_position[1]
 
-                    if (abs(y_movement) > self.volume_sensitivity) and (self.volume_cooldown.ready()):
+                    if (abs(y_movement) > volume_sensitivity) and (self.volume_cooldown.ready()):
                         async_typer("up" if y_movement > 0 else "down")
                         print("Volume up." if y_movement > 0 else "Volume down.")
                         self.pinch_start_coords = current_pinch_position 
                 
-                # Overlay information (Visual Feedback)
+                # Overlay information
                 h, w, _ = frame.shape
                 cv_pos = (int(current_pinch_position[0] * w), int(current_pinch_position[1] * h))
                 cv2.circle(frame, cv_pos, 5, (0, 255, 255), -1)
