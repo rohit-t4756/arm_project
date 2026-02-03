@@ -1,5 +1,9 @@
 from math import sqrt
 import cv2
+
+import time
+from OneEuroFilter import OneEuroFilter
+
 # Connecting to our other files:
 from input_handler import async_typer
 from utilities import GestureCooldown
@@ -19,6 +23,16 @@ class GestureProcessor:
         # Cooldowns
         self.toggle_cooldown = GestureCooldown(limit=1.5)
         self.volume_cooldown = GestureCooldown(limit=0.1)
+
+        # OneEuroFilter
+        self.config = {
+            'freq': 30,      # frequency of the input signal (Hz, my case FPS).
+            'mincutoff': 1.5, # Minimum cutoff FPS to remove jitter at slow speeds.
+            'beta': 5,      # Reduces lag during fast movements.
+            'dcutoff': 1.0    # Cutoff frequency.
+        }
+
+        self.filter = OneEuroFilter(**self.config)
 
     def process_frame(self, result, frame):
         # 0. Trivial checks
@@ -71,10 +85,11 @@ class GestureProcessor:
             thumb_tip = hand_landmarks[4]
             index_tip = hand_landmarks[8]
 
-            distance = sqrt((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)
+            unfiltered_distance = sqrt((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)
+            filtered_distance = self.filter(unfiltered_distance, timestamp= int(time.time() * 1000000))
             current_pinch_position = ((thumb_tip.x + index_tip.x) / 2, (thumb_tip.y + index_tip.y) / 2)
 
-            if distance <= self.gap_threshold:
+            if filtered_distance <= self.gap_threshold:
                 if self.pinch_start_coords == None:
                     self.pinch_start_coords = current_pinch_position
                 else:
@@ -88,7 +103,7 @@ class GestureProcessor:
                 # Overlay information (Visual Feedback)
                 h, w, _ = frame.shape
                 cv_pos = (int(current_pinch_position[0] * w), int(current_pinch_position[1] * h))
-                cv2.circle(frame, cv_pos, 8, (0, 255, 255), -1)
+                cv2.circle(frame, cv_pos, 5, (0, 255, 255), -1)
             else:
                 self.pinch_start_coords = None
         else:
