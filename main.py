@@ -3,10 +3,12 @@ import mediapipe as mp
 import os
 import time
 from threading import Lock
+import tkinter as tk
 
 # Importing our custom modules
 from utilities import PerformanceMonitor
 from gesture_processor_logic import GestureProcessor
+from gui import GUI
 
 # Result storage for the async callback
 latest_result = None
@@ -31,22 +33,27 @@ def main():
     
     options = mp.tasks.vision.GestureRecognizerOptions(
         base_options=BaseOptions(model_asset_path=model_path),
-        num_hands=1,
+        num_hands=12,
         running_mode=mp.tasks.vision.RunningMode.LIVE_STREAM,
         result_callback=result_callback
     )
     recogniser = mp.tasks.vision.GestureRecognizer.create_from_options(options)
 
-    # Initialize Logic and Monitor
+    # Initialize Logic and GUI
     processor = GestureProcessor()
     monitor = PerformanceMonitor()
 
+    root = tk.Tk()
+    app = GUI(root, processor)
+
     # Main Loop
-    while True:
+    def loop():
         t_start = time.perf_counter()
 
         success, frame = camera.read()
-        if not success: continue
+        if not success: 
+            root.after(10, loop)
+            return
 
         frame_RGB = reader.cvtColor(frame, reader.COLOR_BGR2RGB)
         mediapipe_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_RGB)
@@ -60,27 +67,40 @@ def main():
             current_result = latest_result
 
         # Call the logic from the external file
-        # 'processor' holds all the state (isSystemOn, etc.) internally now
-        processor.process_frame(current_result, frame)
+        action_text = processor.process_frame(current_result, frame)
 
         # Performance Monitoring
         t_end = time.perf_counter()
         monitor.update(t_start, t_end)
         fps, total_ms = monitor.get_stats()
 
-        # Overlay
-        status_color = (0, 255, 0) if processor.isSystemOn else (0, 255, 255)
-        reader.putText(frame, f"LIVE_STREAM | FPS: {fps}", (15, 30), 1, 1.2, status_color, 2)
-        reader.putText(frame, f"Latency: {total_ms:.1f}ms", (15, 60), 1, 1.2, (0, 255, 0) if total_ms < 200 else (0, 0, 255), 2)
+        # Extract the gesture name
+        gesture_name = "None"
+        if current_result and current_result.gestures:
+            gesture_name = current_result.gestures[0][0].category_name
 
-        # Display
-        reader.imshow("Feed", frame)
-        if reader.waitKey(1) == ord('q'): break
+        # app updates
+        app.update_video(frame)
+        app.update_dashboard(
+            fps= fps,
+            latency= total_ms,
+            gesture_name= gesture_name,
+            action_name= action_text if processor.isSystemOn else "Idle",
+            is_system_active= processor.isSystemOn
+        )
+
+        # Schedule the next iteration (10ms delay)
+        root.after(10, loop)
+
+    # Start the loop
+    loop()
+    
+    # Start the main window.
+    root.mainloop()
 
     # Cleaning
     recogniser.close()
     camera.release()
-    reader.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
