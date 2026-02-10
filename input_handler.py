@@ -7,7 +7,9 @@ KEY_MAP = {
     "space": Key.space,
     "up": Key.up,
     "down": Key.down,
-    "q": 'q'
+    "right": Key.right,
+    "left": Key.left,
+    "`": '`'
 }
 
 def async_typer(key_name):
