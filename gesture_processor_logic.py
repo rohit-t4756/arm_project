@@ -10,135 +10,152 @@ class GestureProcessor:
         # State Initialization
         self.pinch_start_coords = None
         self.base_gap_threshold = 0.05
-        self.base_volume_sensitivity = 0.08
-        self.isPlaying = False
+        self.base_volume_sensitivity = 0.1
         self.isSystemOn = False
         self.isMuted = False
-        self.user_hand_preference = "left" 
+        
+        # Default Settings
+        self.user_hand_preference = "Left"
+        
+        # Gesture Mapping Variable (UI action name -> MediaPipe Gesture Name)
+        self.gesture_map = {
+            "System Toggle": "Victory",
+            "Play/Pause": "Pointing_Up",
+            "Mute Toggle": "Closed_Fist",
+            "Seek forward": "Thumb_Up",
+            "Seek backward": "Thumb_Down",
+            "Rest": "Open_Palm"
+        }
         
         # Cooldowns
-        self.toggle_cooldown = GestureCooldown(limit=1.0)
-        self.volume_cooldown = GestureCooldown(limit=0.1)
-        self.seeker_cooldown = GestureCooldown(limit=0.5)
+        self.toggle_cooldown = GestureCooldown(limit=0.6)
+        self.volume_cooldown = GestureCooldown(limit=0.05)
+        self.seeker_cooldown = GestureCooldown(limit=0.05)
 
-        # OneEuroFilter
-        self.config = {
-            'freq': 30,      
-            'mincutoff': 1.5,
-            'beta': 5,      
-            'dcutoff': 1.0    
+        # Filtering
+        self.filter = OneEuroFilter(freq=30, mincutoff=1.5, beta=5, dcutoff=1.0)
+
+    def update_config(self, config):
+        """Updates internal variables based on a settings dictionary."""
+        # 1. Update Hand Preference
+        self.user_hand_preference = config.get("hand_preference", "Left")
+        
+        # 2. Update Cooldowns
+        cooldowns = config.get("cooldowns", {})
+        if "Toggle cooldown" in cooldowns:
+            self.toggle_cooldown.limit = cooldowns["Toggle cooldown"]
+        if "Volume cooldown" in cooldowns:
+            self.volume_cooldown.limit = cooldowns["Volume cooldown"]
+        if "Seekbar cooldown" in cooldowns:
+            self.seeker_cooldown.limit = cooldowns["Seekbar cooldown"]
+            
+        # 3. Update Gesture Mappings
+        ui_to_internal = {
+            "Open palm": "Open_Palm",
+            "Victory": "Victory",
+            "Pointing up": "Pointing_Up",
+            "Fist": "Closed_Fist",
+            "Thumb up": "Thumb_Up",
+            "Thumb down": "Thumb_Down",
+            "Pinch up/down": "Pinch" # Handled separately in logic
         }
-        self.filter = OneEuroFilter(**self.config)
+        
+        new_gestures = config.get("gestures", {})
+        for action, ui_name in new_gestures.items():
+            if ui_name in ui_to_internal:
+                self.gesture_map[action] = ui_to_internal[ui_name]
+        
+        print("Processor config updated successfully.")
 
     def process_frame(self, result, frame):
-        # 1. Trivial checks
         if not result or not result.gestures or not result.handedness or len(result.handedness) == 0:
             self.reset_gesture_states()
             return None
         
-        # 2. Hand Preference Check 
+        # Hand Preference check
         chosen_hand_idx = -1
         for i in range(len(result.handedness)):
             try:
-                detected_handedness = result.handedness[i][0].category_name.lower()
-                if detected_handedness == self.user_hand_preference.lower():
+                det_hand = result.handedness[i][0].category_name
+                pref = self.user_hand_preference
+                if pref == "Both / No Preference" or det_hand == pref:
                     chosen_hand_idx = i
                     break
-            except (IndexError, AttributeError):
-                continue
+            except: continue
                 
         if chosen_hand_idx == -1:
             self.reset_gesture_states()
             return None
         
-        # 3. Data Extraction
         try:
             h, w, _ = frame.shape
             hand_landmarks = result.hand_landmarks[chosen_hand_idx]
             wrist = hand_landmarks[0]
             middle_mcp = hand_landmarks[9]
             gesture_name = result.gestures[chosen_hand_idx][0].category_name
-        except (IndexError, AttributeError):
-            return None
+        except: return None
         
-        # Visual Feedback
+        # Visual indicator
         cv2.circle(frame, (int(wrist.x * w), int(wrist.y * h)), 8, (0, 255, 255), 2)
         
-        # 4. Distance Scaling (No numpy for better Pi stability)
-        dist_sq = (middle_mcp.x - wrist.x)**2 + (middle_mcp.y - wrist.y)**2
-        hand_size = sqrt(dist_sq)
-        
-        raw_scale = 0.15 / max(hand_size, 0.1)
-        # Replacing np.clip with pure Python min/max
-        scale_factor = max(0.5, min(raw_scale, 3.0)) 
-
+        hand_size = sqrt((middle_mcp.x - wrist.x)**2 + (middle_mcp.y - wrist.y)**2)
+        scale_factor = max(0.5, min(0.15 / max(hand_size, 0.1), 3.0)) 
         gap_threshold = self.base_gap_threshold / scale_factor
-        volume_sensitivity = self.base_volume_sensitivity / scale_factor
+        vol_sens = self.base_volume_sensitivity / scale_factor
 
-        # --- Gesture Execution Logic ---
-        
-        # System Toggle
-        if gesture_name == 'Victory':
+        # Gesture Execution Logic ----------------
+        # 1. System Toggle
+        if gesture_name == self.gesture_map.get("System Toggle"):
             if self.toggle_cooldown.ready():
                 self.isSystemOn = not self.isSystemOn
-                if not self.isSystemOn: 
-                    async_typer("`")
-                print("System Started" if self.isSystemOn else "System Stopped")
+                if not self.isSystemOn: async_typer("`")
                 return "System Started" if self.isSystemOn else "System Stopped"
             return None
         
-        if not self.isSystemOn:
-            return None
+        if not self.isSystemOn: return None
 
-        # Actions (only if system is On)
-        if gesture_name == 'Closed_Fist':
+        # 2. Mute Toggle
+        if gesture_name == self.gesture_map.get("Mute Toggle"):
             if self.toggle_cooldown.ready():
                 self.isMuted = not self.isMuted
                 async_typer("m")
-                print("Mute Toggled")
                 return "Muted" if self.isMuted else "Unmuted"
         
-        elif gesture_name == 'Pointing_Up':
+        # 3. Play/Pause
+        elif gesture_name == self.gesture_map.get("Play/Pause"):
             if self.toggle_cooldown.ready():
-                self.isPlaying = not self.isPlaying
                 async_typer("space")
-                print("Play/Pause Toggled")
-                return "Video Toggled"
-
-        elif gesture_name == 'Thumb_Up':
+                return "Play/Pause"
+        
+        # 4. Seeking
+        elif gesture_name == self.gesture_map.get("Seek forward"):
             if self.seeker_cooldown.ready():
                 async_typer("right")
-                print("Seeked Forward")
                 return "Seek Forward"
-        
-        elif gesture_name == 'Thumb_Down':
+        elif gesture_name == self.gesture_map.get("Seek backward"):
             if self.seeker_cooldown.ready():
                 async_typer("left")
-                print("Seeked Backward")
                 return "Seek Backward"
 
-        # Volume (Pinch) Logic
-        thumb_tip = hand_landmarks[4]
-        index_tip = hand_landmarks[8]
-        dist = sqrt((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)
-        f_dist = self.filter(dist, timestamp=int(time.time() * 1000000))
-        curr_pinch = ((thumb_tip.x + index_tip.x) / 2, (thumb_tip.y + index_tip.y) / 2)
+        # 5. Volume (Pinch) Logic
+        if self.gesture_map.get("Volume up/down") == "Pinch":
+            thumb_tip, index_tip = hand_landmarks[4], hand_landmarks[8]
+            dist = sqrt((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)
+            f_dist = self.filter(dist)
+            curr_pinch = ((thumb_tip.x + index_tip.x) / 2, (thumb_tip.y + index_tip.y) / 2)
 
-        if f_dist <= gap_threshold:
-            if self.pinch_start_coords is None:
-                self.pinch_start_coords = curr_pinch
+            if f_dist <= gap_threshold:
+                if self.pinch_start_coords:
+                    dy = self.pinch_start_coords[1] - curr_pinch[1]
+                    if abs(dy) > vol_sens and self.volume_cooldown.ready():
+                        async_typer("up" if dy > 0 else "down")
+                        self.pinch_start_coords = curr_pinch 
+                        return "Vol Up" if dy > 0 else "Vol Down"
+                else:
+                    self.pinch_start_coords = curr_pinch
+                cv2.circle(frame, (int(curr_pinch[0]*w), int(curr_pinch[1]*h)), 5, (0, 255, 255), -1)
             else:
-                dy = self.pinch_start_coords[1] - curr_pinch[1]
-                if abs(dy) > volume_sensitivity and self.volume_cooldown.ready():
-                    async_typer("up" if dy > 0 else "down")
-                    self.pinch_start_coords = curr_pinch 
-                    print("Vol Up" if dy > 0 else "Vol Down")
-                    return "Vol Up" if dy > 0 else "Vol Down"
-            
-            cv_pos = (int(curr_pinch[0] * w), int(curr_pinch[1] * h))
-            cv2.circle(frame, cv_pos, 5, (0, 255, 255), -1)
-        else:
-            self.pinch_start_coords = None
+                self.pinch_start_coords = None
 
         return None
 
