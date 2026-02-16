@@ -1,6 +1,13 @@
 import tkinter as tk
 
 class settings_page(tk.Frame):
+    """
+    Class implementing the settings page of the application. It allows users to customize gesture mappings, cooldown durations, and hand preferences. 
+    The settings are designed to be easily retrievable and applicable to the gesture processing logic.
+    Methods:
+    - __init__(parent, controller): Initializes the settings page with UI elements for configuring gesture mappings, cooldowns, and hand preferences.
+    - save_settings(): Collects the current settings from the UI elements and returns them as a structured dictionary for application in the gesture processor.
+    """
     def __init__(self, parent, controller, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.controller = controller
@@ -23,16 +30,15 @@ class settings_page(tk.Frame):
         self.button_frame = tk.Frame(self, bg=self.bg_main)
         self.button_frame.pack(fill="x", padx=8, pady=(8, 0))
         
-        # Local import to avoid circular dependency issues at module level
         from main_page import main_page
         
         self.mainpagebtn = tk.Button(self.button_frame, text="Main Page", bg=self.bg_main, bd=1, relief="ridge", fg=self.fg_text,
                                      command=lambda: controller.show_frame(main_page))
-        self.mainpagebtn.pack(side="left", padx=0)
+        self.mainpagebtn.pack(side="left", expand=True, fill="x", padx=0)
         
-        self.settingspagebtn = tk.Button(self.button_frame, text="Settings", bg=self.bg_main, bd=1, relief="ridge", fg=self.fg_text,
-                                         command=lambda: controller.show_frame(settings_page))
-        self.settingspagebtn.pack(side="left", padx=0)
+        self.settingspagebtn = tk.Button(self.button_frame, text="Settings", bg=self.bg_panel, bd=1, relief="ridge", fg=self.fg_accent,
+                                          command=lambda: controller.show_frame(settings_page))
+        self.settingspagebtn.pack(side="left", expand=True, fill="x", padx=0)
 
         # Main Layout Container
         self.settings_container = tk.Frame(self, bg=self.bg_main, bd=1, relief=tk.RIDGE)
@@ -44,8 +50,9 @@ class settings_page(tk.Frame):
         
         self.action_map_frame.columnconfigure(1, weight=1)        # Configure grid columns to balance space
 
-        actions = ["Rest", "System Toggle", "Play/Pause", "Volume up/down", "Mute Toggle", "Seek forward", "Seek backward"]
-        gestures = ["Open palm", "Victory", "Pointing up", "Pinch up/down", "Fist", "Thumb up", "Thumb down"]
+        # Actions and Gestures list
+        actions = ["Rest", "System Toggle", "Play/Pause", "Volume up/down", "Seek forward/backward", "Next Track", "Previous Track", "Mute Toggle"]
+        gestures = ["Open palm", "Victory", "Pointing up", "Pinch up/down", "Pinch left/right", "Thumb up", "Thumb down", "Fist"]
 
         self.mappings = {}        # Dictionary to store StringVars for retrieval
 
@@ -58,11 +65,19 @@ class settings_page(tk.Frame):
                 fg=self.fg_text,
                 font=self.font_body
             )
-            lbl.grid(row=i, column=0, sticky="w", padx=(10, 5), pady=4)
+            lbl.grid(row=i, column=0, sticky="w", padx=(10, 5), pady=2)
 
             # Dropdown Logic
             selection = tk.StringVar(self)
-            selection.set(gestures[i % len(gestures)])
+            
+            # Setting logical defaults based on recent gesture logic updates
+            default_gesture = gestures[i % len(gestures)]
+            if action_text == "Next Track": default_gesture = "Thumb up"
+            elif action_text == "Previous Track": default_gesture = "Thumb down"
+            elif action_text == "Mute Toggle": default_gesture = "Fist"
+            elif action_text == "Seek forward/backward": default_gesture = "Pinch left/right"
+            
+            selection.set(default_gesture)
             self.mappings[action_text] = selection
 
             dropdown = tk.OptionMenu(self.action_map_frame, selection, *gestures)
@@ -86,7 +101,7 @@ class settings_page(tk.Frame):
                 relief="flat"
             )
             
-            dropdown.grid(row=i, column=1, sticky="ew", padx=(5, 10), pady=4)
+            dropdown.grid(row=i, column=1, sticky="ew", padx=(5, 10), pady=2)
 
         # Cooldown adjustment frame
         self.cooldown_adjustment_frame = tk.Frame(self.settings_container, bg=self.bg_panel, bd=1, relief="ridge")
@@ -181,8 +196,6 @@ class settings_page(tk.Frame):
         )
         
         hand_dropdown.grid(row=0, column=1, sticky="ew", padx=(5, 10), pady=4)
-        # ---------------------------------------------------------
-
 
         # Apply button
         self.apply_btn = tk.Button(
@@ -199,6 +212,26 @@ class settings_page(tk.Frame):
         self.apply_btn.pack(fill="x", padx=16, pady=6)
 
     def save_settings(self):
+        """
+        Extracts the current settings from the UI elements and returns them as a structured dictionary for application in gesture_processor_logic.py.
+
+        Returns:
+        dict: A dictionary containing the current gesture mappings, cooldown values, and hand preference. The structure is as follows:
+            {
+                "gestures": {
+                    "Rest": "Open palm",
+                    "System Toggle": "Victory",
+                    ...
+                },
+                "cooldowns": {
+                    "Toggle cooldown": 0.6,
+                    "Volume cooldown": 0.05,
+                    ...
+                },
+                "hand_preference": "Both / No Preference"
+            }
+        """
+
         # 1. Extract Gesture Mappings
         gesture_config = {action: var.get() for action, var in self.mappings.items()}
         

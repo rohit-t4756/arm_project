@@ -1,8 +1,14 @@
 import tkinter as tk
 from input_handler import async_typer
 
-
 class main_page(tk.Frame):
+    """
+    Class representing the main page of the application. It displays system controls, metrics, and provides navigation to the settings page.
+    Methods:
+    - __init__(parent, controller, processor): Initializes the main page with UI elements for system control and metrics display.
+    - create_metric_item(parent, label_text, initial_val): Helper method to create a labeled metric display item.
+    - update_dashboard(fps, ai_latency, total_latency, gesture_name, action_name, is_system_active): Updates the dashboard with the latest performance metrics and detected gestures/actions.
+    """
     def __init__(self, parent, controller, processor):
         tk.Frame.__init__(self, parent)
         self.controller = controller
@@ -43,12 +49,12 @@ class main_page(tk.Frame):
         
         from settings_page import settings_page
         
-        self.mainpagebtn = tk.Button(self.button_frame, text="Main Page", bg=self.bg_main, bd=1, relief="ridge", fg=self.fg_text,
+        self.mainpagebtn = tk.Button(self.button_frame, text="Main Page", bg=self.bg_panel, bd=1, relief="ridge", fg=self.fg_accent,
                                      command=lambda: controller.show_frame(main_page))
         self.mainpagebtn.pack(side="left", expand=True, fill="x", padx=0)
         
         self.settingspagebtn = tk.Button(self.button_frame, text="Settings", bg=self.bg_main, bd=1, relief="ridge", fg=self.fg_text,
-                                         command=lambda: controller.show_frame(settings_page))
+                                          command=lambda: controller.show_frame(settings_page))
         self.settingspagebtn.pack(side="left", expand=True, fill="x", padx=0)
 
         # 2. System Controls
@@ -104,15 +110,25 @@ class main_page(tk.Frame):
                                           fg=self.fg_dim, font=self.font_body, labelanchor="n", padx=5, pady=5)
         self.legend_frame.pack(fill="both", expand=True, pady=5)
 
+        # Legend Data
+        emojis = {
+            "pinch": "\U0001F90F",
+            "thumb_up": "\U0001F44D",
+            "thumb_down": "\U0001F44E",
+            "victory": "\u270C",
+            "open_palm": "\u270B",
+            "fist": "\u270A",
+            "point_up": "\u261D"
+        }
         legend_data = [
-            ("✌ Victory", "System On/Off"),
-            ("☝ Pointing Up", "Video Play/Pause"),
-            ("🤏 Pinch Up", "Volume Up"),
-            ("🤏 Pinch Down", "Volume Down"),
-            ("✊ Fist", "Mute Toggle"),
-            ("✋ Open Palm", "Rest"),
-            ("👍 Thumb Up", "Seek Forward"),
-            ("👎 Thumb Down", "Seek Backward")
+            (f"{emojis['victory']} Victory", "System On/Off"),
+            (f"{emojis['open_palm']} Open Palm", "Rest"),
+            (f"{emojis['point_up']} Pointing Up", "Play/Pause"),
+            (f"{emojis['thumb_up']} Thumb Up", "Next Track"),
+            (f"{emojis['thumb_down']} Thumb Down", "Previous Track"),
+            (f"{emojis['fist']} Fist", "Mute Toggle"),
+            (f"{emojis['pinch']} Pinch (Vertical)", "Volume Up/Down"),
+            (f"{emojis['pinch']} Pinch (Horizontal)", "Seek Forward/Back"),
         ]
 
         for gesture, desc in legend_data:
@@ -124,6 +140,14 @@ class main_page(tk.Frame):
                      font=self.font_legend_desc).pack(anchor="w", side="left")
 
     def create_metric_item(self, parent, label_text, initial_val):
+        """
+        Helper method to create a labeled metric display item in the dashboard.
+        
+        :param parent: The parent tkinter widget where this metric item will be placed.
+        :param label_text: The text label describing the metric (e.g., "Engine FPS").
+        :param initial_val: The initial value to display for the metric (e.g., "0 ms"). This will be updated dynamically as the application runs.
+        :return: A reference to the value label widget, which can be updated later with new metric values.
+        """
         frame = tk.Frame(parent, bg=self.bg_panel)
         frame.pack(fill="x", pady=1)
         tk.Label(frame, text=label_text, bg=self.bg_panel, fg=self.fg_dim, font=self.font_body).pack(side="left")
@@ -132,7 +156,18 @@ class main_page(tk.Frame):
         return val_lbl
 
     def update_dashboard(self, fps, ai_latency, total_latency, gesture_name, action_name, is_system_active):
-        """Updates the text-based components of the GUI."""
+        """
+        Updates the text-based components of the GUI.
+        This method is called periodically (e.g., every 100 ms) to refresh the displayed performance metrics, detected gestures, and current action status. 
+        It also updates the system status indicator based on whether the gesture control system is active or offline.
+
+        :param fps: The current frames per second of the gesture recognition engine.
+        :param ai_latency: The latency of the AI processing in milliseconds.
+        :param total_latency: The total latency from frame capture to action execution in milliseconds.
+        :param gesture_name: The name of the currently detected gesture, if any.
+        :param action_name: The name of the current action being performed based on the detected gesture
+        :param is_system_active: A boolean indicating whether the gesture control system is currently active (True) or offline (False).
+        """
         self.lbl_fps.config(text=f"{int(fps)}")
         
         ai_lat_color = self.fg_accent if ai_latency < 100 else self.fg_alert

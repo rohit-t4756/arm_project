@@ -1,3 +1,10 @@
+"""
+Main application file for the gesture control system. This file initializes the GUI, manages page navigation, and integrates the gesture processing logic.
+Key components:
+- app class: The main application class that sets up the GUI and manages page transitions.
+- get_settings method: Retrieves the current settings from the settings page instance.
+- Main loop: Initializes the application and starts the main event loop.
+"""
 import tkinter as tk
 
 # Importing custom modules
@@ -7,10 +14,14 @@ from gesture_processor_logic import GestureProcessor
 
 class app(tk.Tk):
     def __init__(self, *args, **kwargs):
+        """
+        Initializes the main application window, sets up the container for pages, and initializes the gesture processor.
+        It also creates instances of the main page and settings page, storing them in a dictionary for easy access and navigation using the show_frame method.
+        """
         tk.Tk.__init__(self, *args, **kwargs)
 
         self.title("Controller")
-        self.geometry("320x675")        
+        self.geometry("320x650")        
         self.resizable(False, True)
 
         container = tk.Frame(self)
@@ -40,12 +51,16 @@ class app(tk.Tk):
         self.show_frame(main_page)
     
     def show_frame(self, cont):
-        """Raises the selected frame to the top."""
+        """
+        Raises the selected frame to the top.
+        """
         frame = self.frames[cont]
         frame.tkraise()
     
     def get_settings(self):
-        """Correctly calls save_settings on the INSTANCE of settings_page."""
+        """
+        Correctly calls save_settings on the INSTANCE of settings_page.
+        """
         settings_instance = self.frames[self.settingsPageClass]
         return settings_instance.save_settings()
 
